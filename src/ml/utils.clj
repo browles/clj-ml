@@ -1,4 +1,9 @@
-(ns ml.utils)
+(ns ml.utils
+  (:require [clojure.core.matrix :as m]
+            [clojure.core.matrix.stats :as mstats]
+            [ml.utils :refer :all]))
+
+(def n-cpu (.availableProcessors (Runtime/getRuntime)))
 
 (defn r []
   (Math/random))
@@ -8,13 +13,28 @@
     0
     1))
 
-(defn r-vec [n]
-  (vec (take n (repeatedly r))))
+(defn randn
+  ([n m]
+   (randn n m 1))
+  ([n m s]
+   (m/emap! (fn [_]
+              (* s (- (Math/random) 0.5)))
+            (m/new-matrix n m))))
 
-(defn r-mat [n m]
-  (vec (take n (repeatedly #(r-vec m)))))
+; Because core.matrix doesn't allow broadcasting columns, apparently.
+(defn broadcast-col [v [n-rows n-cols]]
+  (when (not= [n-rows 1] (m/shape v))
+    (throw (Exception. (format "Incompatible shapes, cannot broadcast-col shape %s to %s"
+                               (m/shape v) [n-rows n-rows]))))
+  (m/matrix (mapv #(repeat n-cols (first %)) v)))
 
-(def n-cpu (.availableProcessors (Runtime/getRuntime)))
+(defn submatrices [M num-cols]
+  (let [[n m] (m/shape M)
+        n-matrices (/ m num-cols)]
+    (mapv
+      (fn [offset]
+        (m/matrix (mapv #(take num-cols (drop (* num-cols offset) %)) M)))
+      (range 0 (Math/ceil n-matrices)))))
 
 (defn chunked-pmap [f n & colls]
   (let [tuples (apply map vector colls)
