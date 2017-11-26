@@ -1,6 +1,42 @@
 (ns ml.nn-naive
-  (:require [ml.math :refer :all]
-            [ml.utils :refer :all]))
+  (:require [ml.utils :refer :all]))
+
+(def safe-math false)
+
+(defmacro safe-vector-op [u v]
+  (when safe-math
+    `(when-not (= (count ~u) (count ~v))
+       (throw (Exception. "Vector lengths not equal")))))
+
+(defmacro safe-matrix-op [a b]
+  (when safe-math
+    `(when-not (= (count (first ~a)) (count ~b))
+       (throw (Exception. "Matrix dimensions do not match")))))
+
+(defn scale [v s]
+  (mapv * v (repeat s)))
+
+(defn add [u v]
+  (safe-vector-op u v)
+  (mapv + u v))
+
+(defn sub [u v]
+  (safe-vector-op u v)
+  (mapv - u v))
+
+(defn mul [u v]
+  (safe-vector-op u v)
+  (mapv * u v))
+
+(defn dot [u v]
+  (safe-vector-op u v)
+  (reduce + (mul u v)))
+
+(defn mmul [a b]
+  (safe-matrix-op a b)
+  (let [b-cols (apply map vector b)]
+    (for [row a col b-cols]
+      (mapv #(dot row %) col))))
 
 (defn fire-neuron [neuron v]
   (sigmoid (dot neuron v)))

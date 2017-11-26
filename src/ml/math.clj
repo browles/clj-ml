@@ -1,82 +1,45 @@
 (ns ml.math)
 
-;; (def safe-math false)
-
-;; (defmacro safe-vector-op [u v]
-;;   (when safe-math
-;;     `(when-not (= (count ~u) (count ~v))
-;;        (throw (Exception. "Vector lengths not equal")))))
-
-;; (defmacro safe-matrix-op [a b]
-;;   (when safe-math
-;;     `(when-not (= (count (first ~a)) (count ~b))
-;;        (throw (Exception. "Matrix dimensions do not match")))))
-
-;; (defn scale [v s]
-;;   (mapv * v (repeat s)))
-
-;; (defn add [u v]
-;;   (safe-vector-op u v)
-;;   (mapv + u v))
-
-;; (defn sub [u v]
-;;   (safe-vector-op u v)
-;;   (mapv - u v))
-
-;; (defn mul [u v]
-;;   (safe-vector-op u v)
-;;   (mapv * u v))
-
-;; (defn dot [u v]
-;;   (safe-vector-op u v)
-;;   (reduce + (mul u v)))
-
-;; (defn mmul [a b]
-;;   (safe-matrix-op a b)
-;;   (let [b-cols (apply map vector b)]
-;;     (for [row a col b-cols]
-;;       (mapv #(dot row %) col))))
-
-(defn sigmoid [x]
+(defn sigmoid ^double [^double x]
   (/ 1.0 (+ 1.0 (Math/exp (- x)))))
 
-(defn sigmoid' [a]
-  (* a (- 1 a)))
+(defn sigmoid' ^double [^double a]
+  (* a (- 1.0 a)))
 
-(defn tanh [x]
+(defn tanh ^double [^double x]
   (Math/tanh x))
 
-(defn tanh' [a]
-  (- 1 (* a a)))
+(defn tanh' ^double [^double a]
+  (- 1.0 (* a a)))
 
-(defn relu [x]
-  (max 0 x))
+(defn relu ^double [^double x]
+  (max 0.0 x))
 
-(defn relu' [a]
+(defn relu' ^double [^double a]
   (if (neg? a)
-    0
-    1))
+    0.0
+    1.0))
 
-(defn leaky-relu [x]
+(defn leaky-relu ^double [^double x]
   (max (* 0.01 x) x))
 
-(defn leaky-relu' [a]
+(defn leaky-relu' ^double [^double a]
   (if (neg? a)
     0.01
-    1))
+    1.0))
 
-(defn log-loss [y' y]
+(defn log-loss ^double [^double y' ^double y]
   (- (+ (* y (Math/log y'))
-        (* (- 1 y) (Math/log (1 - y'))))))
+        (* (- 1.0 y) (Math/log (- 1.0 y'))))))
 
-(defn sq-diff [y' y]
+(defn sq-diff ^double [^double y' ^double y]
   (let [d (- y' y)]
     (* d d)))
 
-(defn log-loss' [y' y]
+(defn log-loss' ^double [^double y' ^double y]
   (+ (/ (- y) y')
-     (/ (- 1 y)
-        (- 1 y'))))
+     (/ (- 1.0 y)
+        (- 1.0 y'))))
 
-(defn sq-diff' [y' y]
-  (* 2 (- y' y)))
+(defn sq-diff' ^double [^double y' ^double y]
+  (* 2.0 (- y' y)))
