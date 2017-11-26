@@ -2,12 +2,13 @@
   (:require [clojure.core.matrix :as m]
             [clojure.core.matrix.stats :as mstats]
             [clojure.pprint :refer [pprint]]
-            ;; [ml.math :refer :all]
             [ml.nn :as nn]
-            ;; [ml.nn-naive :as nn-naive]
-            ;; [ml.stats :refer :all]
-            ;; [ml.utils :refer :all]
-            ))
+            [ml.utils :refer :all]
+            [uncomplicate.commons.core :refer [with-release]]
+            [uncomplicate.neanderthal.core :as ncore]
+            [uncomplicate.neanderthal.cuda :as ncuda]
+            [uncomplicate.neanderthal.native :as nnat]
+            [uncomplicate.neanderthal.vect-math :as nvm]))
 
 ;; (defn normalize [x]
 ;;   (/ (+ 1.0 x) 2.0))
@@ -43,15 +44,18 @@
 ;;     (prn num-neurons)
 ;;     (prn (map #(evaluate % normalized-test-set) trained-networks))))
 
-(def X (nn/randn 1 100000 3.14))
-(def X-test (nn/randn 1 10000 3.14))
+(def X (n-randn 10 10000 3.14))
+(def X-test (n-randn 10 10000 3.14))
 
-(def Y (m/emap #(Math/sin %) X))
-(def Y-test (m/emap #(Math/sin %) X-test))
+(defn sin ^double [^double x]
+  (Math/sin x))
 
-(def n (nn/new-network 1 [[10 :relu]
-                          ;; [3 :relu]
-                          [1 :tanh]]
+(def Y (ncore/alter! (ncore/copy X) sin))
+(def Y-test (ncore/alter! (ncore/copy X-test) sin))
+
+(def n (nn/new-network 10 [[10 :relu]
+                           ;; [3 :relu]
+                           [10 :tanh]]
                        :sq-diff))
 
 (defn epoch [network]
@@ -69,3 +73,6 @@
 
 (defn evaluate [network]
   (nn/compute-cost network X-test Y-test))
+
+(defn run [coll]
+  (dorun (map (comp println evaluate) coll)))

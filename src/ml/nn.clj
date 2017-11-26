@@ -3,6 +3,8 @@
             [clojure.core.matrix.stats :as mstats]
             [ml.utils :refer :all]))
 
+(set! *warn-on-reflection* true)
+
 (m/set-current-implementation :vectorz)
 
 (def activation-fn->f
@@ -25,20 +27,18 @@
   {:log-loss log-loss'
    :sq-diff sq-diff'})
 
-(defrecord Layer [W W-T b activation-fn])
+(defrecord Layer [W b activation-fn])
 (defrecord Network [n-inputs n-outputs layers loss-fn])
 (defrecord LayerActivation [input output])
 (defrecord NetworkActivation [output layer-activations])
-(defrecord LayerGradient [dW db])
-(defrecord NetworkGradient [input-dZ input-layer layer-gradients])
+(defrecord LayerGradient [dZ dW db])
+(defrecord NetworkGradient [next-dZ next-layer layer-gradients])
 
 (defn new-layer [n m activation-fn]
-  (let [W (randn n m 10)]
-    (Layer.
-      W
-      (m/transpose W)
-      (randn n 1 1)
-      activation-fn)))
+  (Layer.
+    (cm-randn n m 10)
+    (cm-randn n 1 1)
+    activation-fn))
 
 (defn new-network [n-inputs layer-specs loss-fn]
   (reduce (fn [network [n-neurons activation-fn]]
@@ -56,7 +56,7 @@
 (defn activate-layer [input layer]
   (let [{:keys [W b activation-fn]} layer]
     (->> (m/mmul W input)
-         (#(m/add % (broadcast-col b (m/shape %))))
+         (#(m/add % (cm-broadcast-col b (m/shape %))))
          (m/emap (get activation-fn->f activation-fn)))))
 
 (defn forward-prop [network X]
@@ -72,48 +72,49 @@
             [])
           (:layers network)))
 
-(defn compute-gradient [dZ n-samples input]
+(defn compute-gradient [dZ m-samples input]
   (LayerGradient.
-    (m/div (m/mmul dZ (m/transpose input)) n-samples)
-    (m/div (m/matrix (mapv (comp vector mstats/sum) (m/rows dZ))) n-samples)))
+    (m/div (m/mmul dZ (m/transpose input)) m-samples)
+    (m/div (m/matrix (mapv (comp vector mstats/sum) (m/rows dZ))) m-samples)))
 
 (defn backward-prop [network network-activation X Y]
-  (let [[_ n-samples] (m/shape X)
+  (let [[_ m-samples] (m/shape X)
         [output-layer & rev-layers] (reverse (:layers network))
         [output-activation & rev-activations] (reverse (:layer-activations network-activation))
+        dfda (get loss-fn->dfda (:loss-fn network))
+        dfdz (get activation-fn->dfdz (:activation-fn output-layer))
+        output-dZ (compute-output-dZ (:output output-activation) Y dfda dfdz)
         output-dZ (m/emap (fn [a y]
-                            (* ((get loss-fn->dfda (:loss-fn network)) a y)
-                               ((get activation-fn->dfdz (:activation-fn output-layer)) a)))
+                            (* (dfda a y)
+                               (dfdz a)))
                           (:output output-activation)
                           Y)]
     (-> (reduce (fn [network-gradient [layer layer-activation]]
-                  (let [{:keys [input-dZ input-layer layer-gradients]} network-gradient
+                  (let [{:keys [next-dZ next-layer layer-gradients]} network-gradient
                         {:keys [activation-fn]} layer
                         {:keys [input output]} layer-activation]
-                    (let [dZ (-> (m/mmul (:W-T input-layer) input-dZ)
+                    (let [dZ (-> (m/mmul (m/transpose (:W input-layer)) input-dZ)
                                  (m/mul (m/emap (get activation-fn->dfdz activation-fn)
                                                 output)))
-                          layer-gradient (compute-gradient dZ n-samples input)]
+                          layer-gradient (compute-gradient dZ m-samples input)]
                       (assoc network-gradient
-                        :input-dZ dZ
-                        :input-layer layer
+                        :next-dZ dZ
+                        :next-layer layer
                         :layer-gradients (conj layer-gradients layer-gradient)))))
                 (NetworkGradient.
                   output-dZ
                   output-layer
-                  [(compute-gradient output-dZ n-samples (:input output-activation))])
+                  [(compute-gradient output-dZ m-samples (:input output-activation))])
                 (mapv vector rev-layers rev-activations))
-        (update :layer-gradients reverse))))
+        (update :layer-gradients (comp vec reverse)))))
 
 (defn update-weights [network network-gradient learning-rate]
   (assoc network
     :layers (mapv (fn [layer layer-gradient]
                     (let [{:keys [W b]} layer
-                          {:keys [dW db]} layer-gradient
-                          new-W (m/add-scaled W dW (- learning-rate))]
+                          {:keys [dW db]} layer-gradient]
                       (assoc layer
-                        :W new-W
-                        :W-T (m/transpose new-W)
+                        :W (m/add-scaled W dW (- learning-rate))
                         :bias (m/add-scaled b db (- learning-rate)))))
                   (:layers network)
                   (:layer-gradients network-gradient))))

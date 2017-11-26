@@ -1,7 +1,9 @@
 (ns ml.utils
   (:require [clojure.core.matrix :as m]
             [clojure.core.matrix.stats :as mstats]
-            [ml.utils :refer :all]))
+            [uncomplicate.neanderthal.core :as ncore]
+            [uncomplicate.neanderthal.cuda :as ncuda]
+            [uncomplicate.neanderthal.native :as nnat]))
 
 (def n-cpu (.availableProcessors (Runtime/getRuntime)))
 
@@ -13,28 +15,57 @@
     0
     1))
 
-(defn randn
-  ([n m]
-   (randn n m 1))
+(defn cm-randn
   ([n m s]
    (m/emap! (fn [_]
               (* s (- (Math/random) 0.5)))
             (m/new-matrix n m))))
 
+(defn n-randn
+  ([n m]
+   (n-randn n m 1))
+  ([n m s]
+   (ncore/alter!
+     (nnat/fge n m)
+     (fn ^double [^double _]
+       (* s (- (Math/random) 0.5))))))
+
+; core.matrix utilities
 ; Because core.matrix doesn't allow broadcasting columns, apparently.
-(defn broadcast-col [v [n-rows n-cols]]
-  (when (not= [n-rows 1] (m/shape v))
+(defn cm-broadcast-col [v [m-rows n-cols]]
+  (when (not= [m-rows 1] (m/shape v))
     (throw (Exception. (format "Incompatible shapes, cannot broadcast-col shape %s to %s"
-                               (m/shape v) [n-rows n-rows]))))
+                               (m/shape v) [m-rows n-cols]))))
   (m/matrix (mapv #(repeat n-cols (first %)) v)))
 
-(defn submatrices [M num-cols]
+(defn cm-submatrices [M num-cols]
   (let [[n m] (m/shape M)
         n-matrices (/ m num-cols)]
     (mapv
       (fn [offset]
         (m/matrix (mapv #(take num-cols (drop (* num-cols offset) %)) M)))
       (range 0 (Math/ceil n-matrices)))))
+
+; neaderthal utilities
+(defn n-shape [m]
+  [(ncore/mrows m) (ncore/ncols m)])
+
+(defn n-to-gpu! [m]
+  (ncore/transfer! m (apply ncuda/cuge (n-shape m))))
+
+(defn n-from-gpu! [m]
+  (ncore/transfer! m (apply nnat/fge (n-shape m))))
+
+(defn n-broadcast-col [v [m-rows n-cols]]
+  (when (not= [m-rows 1] (n-shape v))
+    (throw (Exception. (format "Incompatible shapes, cannot broadcast-col shape %s to %s"
+                               (n-shape v) [m-rows n-cols]))))
+  (ncore/alter!
+    (nnat/fge m-rows n-cols)
+    (fn ^double [^long i ^long j ^double x]
+      (ncore/entry v i 0))))
+
+(defn n-submatrices [M num-cols])
 
 (defn chunked-pmap [f n & colls]
   (let [tuples (apply map vector colls)
