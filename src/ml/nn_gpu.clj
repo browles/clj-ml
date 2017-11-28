@@ -1,5 +1,6 @@
 (ns ml.nn
   (:require [ml.math :refer :all]
+            [ml.neanderthal-utils :refer :all]
             [ml.utils :refer :all]
             [uncomplicate.commons.core :refer [with-release]]
             [uncomplicate.neanderthal.core :as ncore]
@@ -38,8 +39,8 @@
 
 (defn new-layer [n m activation-fn]
   (Layer.
-    (n-randn n m 10)
-    (n-randn n 1 1)
+    (randn n m 10)
+    (randn n 1 1)
     activation-fn))
 
 (defn new-network [n-inputs layer-specs loss-fn]
@@ -59,7 +60,7 @@
   (let [{:keys [W b activation-fn]} layer
         [m n] (n-shape W)
         [_ nx-samples] (n-shape input)
-        B (n-broadcast-col b [m nx-samples])]
+        B (broadcast-col b [m nx-samples])]
     (-> (ncore/mm W input)
         (ncore/axpy B)
         (ncore/alter! (get activation-fn->f activation-fn)))))
@@ -70,7 +71,7 @@
           [m n] (n-shape W)]
       (with-release [gpu-input (n-to-gpu! input)
                      gpu-W (n-to-gpu! W)
-                     gpu-B (n-to-gpu! (n-broadcast-col b [m nx-samples]))
+                     gpu-B (n-to-gpu! (broadcast-col b [m nx-samples]))
                      gpu-W-input (ncore/mm gpu-W gpu-input)]
         (-> gpu-W-input
             (ncore/axpy! gpu-B)

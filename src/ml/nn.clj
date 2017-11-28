@@ -1,6 +1,8 @@
 (ns ml.nn
   (:require [clojure.core.matrix :as m]
             [clojure.core.matrix.stats :as mstats]
+            [ml.core-matrix-utils :refer :all]
+            [ml.math :refer :all]
             [ml.utils :refer :all]))
 
 (set! *warn-on-reflection* true)
@@ -36,8 +38,8 @@
 
 (defn new-layer [n m activation-fn]
   (Layer.
-    (cm-randn n m 10)
-    (cm-randn n 1 1)
+    (randn n m 10)
+    (randn n 1 1)
     activation-fn))
 
 (defn new-network [n-inputs layer-specs loss-fn]
@@ -56,7 +58,7 @@
 (defn activate-layer [input layer]
   (let [{:keys [W b activation-fn]} layer]
     (->> (m/mmul W input)
-         (#(m/add % (cm-broadcast-col b (m/shape %))))
+         (#(m/add % (broadcast-col b (m/shape %))))
          (m/emap (get activation-fn->f activation-fn)))))
 
 (defn forward-prop [network X]
@@ -74,8 +76,22 @@
 
 (defn compute-gradient [dZ m-samples input]
   (LayerGradient.
+    dZ
     (m/div (m/mmul dZ (m/transpose input)) m-samples)
     (m/div (m/matrix (mapv (comp vector mstats/sum) (m/rows dZ))) m-samples)))
+
+(defn compute-dZ [layer activation output-layer output-dZ]
+  (let [activation-fn (:activation-fn layer)]
+    (-> (m/mmul (m/transpose (:W output-layer)) output-dZ)
+        (m/mul (m/emap (get activation-fn->dfdz activation-fn)
+                       activation)))))
+
+(defn compute-output-dZ [A Y dfda dfdz]
+  (m/emap (fn [a y]
+            (* (dfda a y)
+               (dfdz a)))
+          A
+          Y))
 
 (defn backward-prop [network network-activation X Y]
   (let [[_ m-samples] (m/shape X)
@@ -83,19 +99,11 @@
         [output-activation & rev-activations] (reverse (:layer-activations network-activation))
         dfda (get loss-fn->dfda (:loss-fn network))
         dfdz (get activation-fn->dfdz (:activation-fn output-layer))
-        output-dZ (compute-output-dZ (:output output-activation) Y dfda dfdz)
-        output-dZ (m/emap (fn [a y]
-                            (* (dfda a y)
-                               (dfdz a)))
-                          (:output output-activation)
-                          Y)]
+        output-dZ (compute-output-dZ (:output output-activation) Y dfda dfdz)]
     (-> (reduce (fn [network-gradient [layer layer-activation]]
                   (let [{:keys [next-dZ next-layer layer-gradients]} network-gradient
-                        {:keys [activation-fn]} layer
                         {:keys [input output]} layer-activation]
-                    (let [dZ (-> (m/mmul (m/transpose (:W input-layer)) input-dZ)
-                                 (m/mul (m/emap (get activation-fn->dfdz activation-fn)
-                                                output)))
+                    (let [dZ (compute-dZ layer output next-layer next-dZ)
                           layer-gradient (compute-gradient dZ m-samples input)]
                       (assoc network-gradient
                         :next-dZ dZ

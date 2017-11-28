@@ -86,7 +86,7 @@
     (update-weights network activations errors learning-rate item)))
 
 (defn batched-train [network learning-rate batch]
-  (let [chunk-size (quot (count batch) n-cpu)
+  (let [chunk-size (quot (count batch) 8)
         batch-activations (doall (chunked-pmap #(forward-prop network (first %)) chunk-size batch))
         batch-errors (doall (chunked-pmap #(backward-prop network %1 (second %2)) chunk-size batch-activations batch))]
     (loop [new-network network activations batch-activations errors batch-errors items (map first batch)]
